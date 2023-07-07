@@ -1,3 +1,5 @@
+[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-%23FE5196?logo=conventionalcommits&logoColor=white)](https://conventionalcommits.org)
+
 ```bash
 git clone https://github.com/bats-core/bats-core.git
 cd bats-core
@@ -37,20 +39,24 @@ if ! [[ $branch_name =~ $branch_pattern ]]; then
 fi
 ```
 
-
 ```bash
-# Check footer
-if ! echo "$commit_footer" | grep -qE "^[-a-zA-Z]+[:#] "; then
-    echo "Aborting commit. Your commit footer is not properly formatted. It should be 'token: value' or 'token # value'." >&2
-    exit 1
-fi
-# Check for BREAKING CHANGE in footer or header
-if echo "$commit_footer" | grep -qE "^BREAKING CHANGE: "; then
-    :
-elif echo "$commit_header" | grep -qE "^(feat|fix|chore|docs|test|style|refactor|perf|build|ci|revert)(\(.+?\))?!: "; then
-    :
+## BODY ##
+body_missing_new_line="Aborting commit. Your commit body must begin one blank line after the description.
+i.e-> feat: add new feature
+
+This is the commit body."
+breaking_change_pattern="^(BREAKING CHANGE|BREAKING-CHANGE): .*$"
+# Check if the body starts with an empty line
+if [[ -n $commit_body && ! $commit_body =~ ^\n ]]; then
+  if echo "$commit_body$commit_header" | grep -qiE "BREAKING[- ]CHANGE.*|(^|\n)(.*)!.*:.*"; then
+    if ! echo "$commit_body$commit_header" | grep -qE "$breaking_change_pattern|(^|\n)(.*)!.*:.*"; then
+      echo "Aborting commit. Breaking changes must be indicated in the commit footer or header as 'BREAKING CHANGE: description' or 'BREAKING-CHANGE: description'." >&2
+      exit 1
+    fi
+  else
+    echo "$body_missing_new_line"
+  fi
 else
-    echo "Aborting commit. Breaking changes must be indicated in the type/scope prefix of a commit, or as an entry in the footer." >&2
-    exit 1
+  echo "$body_missing_new_line"
 fi
 ```

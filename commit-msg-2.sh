@@ -53,12 +53,12 @@ if [[ -n "$commit_body" && $(echo "$commit_message" | sed -n '2p' | wc -c) -ne 1
     exit 1
 fi
 
-breaking_change_pattern="(?<!BREAKING CHANGE[^:]\n|BREAKING-CHANGE[^:]\n)^(BREAKING CHANGE: |BREAKING-CHANGE: ).*$"
+breaking_change_pattern="^BREAKING CHANGE: .*$|^BREAKING-CHANGE: .*$"
 
 # Function to check if a line could be a footer
 is_footer_element() {
     local line=$1
-    if echo "$line" | grep -qP "$breaking_change_pattern|(^|\n)(.*)!.*:.*"; then
+    if echo "$line" | grep -qE "$breaking_change_pattern|(^|\n)(.*)!.*:.*"; then
         return 0
     elif echo "$line" | grep -qE "^[^-]+[-| ]# .+$|^[^-]+: .+$"; then
         return 0
@@ -66,7 +66,6 @@ is_footer_element() {
         return 1
     fi
 }
-
 
 # Check for more than one line breaks in the commit body that are not separating footer elements
 # or for no empty line between non-footer lines
@@ -83,7 +82,7 @@ if [[ -n "$commit_body" ]]; then
         if [[ $is_footer_element_line -eq 0 ]]; then
             :
         # Check for two non-empty lines with no empty line in between
-        elif [[ -n $line && -z $prev_line && -n $second_last_line && $is_footer_element_second_last_line -ne 0 ]]; then
+        elif [[ -n $line && -n $prev_line && $is_footer_element_second_last_line -ne 0 ]]; then
             echo "$invalid_spacing" >&2
             exit 1
         fi
@@ -92,6 +91,5 @@ if [[ -n "$commit_body" ]]; then
         prev_line=$line
     done
 fi
-
 
 exit 0  # Indicate successful validation

@@ -6,7 +6,7 @@ types='feat|fix|chore|docs|test|style|refactor|perf|build|ci|revert'
 commit_header_failure="Aborting commit. Your commit message header is invalid. Please follow the standards: type(scope)!: description
 Commits MUST be prefixed with a type, which consists of one of $types,
 followed by the OPTIONAL scope -between parenthesis- OPTIONAL ! -for breaking chages- and REQUIRED terminal colon and space."
-long_header_failure="Aborting commit. Your description is too long.
+commit_header_too_long="Aborting commit. Your description is too long.
 The description is a short summary of the code change
 A longer -free-form- commit body MAY be provided after the short description.
 The body MUST begin one blank line after the description and MAY consist of any number of newline separated paragraphs."
@@ -21,8 +21,6 @@ This is the commit body."
 @test "valid commit message" {
   echo "feat: add new feature" > temp.txt
   run $script temp.txt
-  captured_stderr=$output
-  captured_stdout=$status
   [ "$status" -eq 0 ]
   [ "$output" = "" ] # Validate that the stdout is empty
 }
@@ -97,7 +95,7 @@ This is the commit body."
 
 # Test with blank line after commit header
 @test "blank line after commit header" {
-  echo "feat: add new feature\n\nThis is the commit body." > temp.txt
+  echo -e $'feat: add new feature\n\nThis is the commit body.' > temp.txt
   run $script temp.txt
   [ "$status" -eq 0 ]
   [ "$output" = "" ] # Validate that the stdout is empty
@@ -105,7 +103,7 @@ This is the commit body."
 
 # Test valid BREAKING CHANGE in footer
 @test "valid BREAKING CHANGE in footer" {
-  echo -e "feat: add new feature\n\nBREAKING CHANGE: changes break API" > temp.txt
+  echo -e $'feat: add new feature\n\nBREAKING CHANGE: changes break API' > temp.txt
   run $script temp.txt
   [ "$status" -eq 0 ]
   [ "$output" = "" ] # Validate that the stdout is empty
@@ -113,7 +111,7 @@ This is the commit body."
 
 # Test valid BREAKING-CHANGE in footer
 @test "valid BREAKING-CHANGE in footer" {
-  echo -e "fix: resolve issue\n\nBREAKING-CHANGE: changes break API" > temp.txt
+  echo -e $'fix: resolve issue\n\nBREAKING-CHANGE: changes break API' > temp.txt
   run $script temp.txt
   [ "$status" -eq 0 ]
   [ "$output" = "" ] # Validate that the stdout is empty
@@ -134,6 +132,91 @@ This is the commit body."
   [ "$status" -eq 0 ]
   [ "$output" = "" ] # Validate that the stdout is empty
 }
+
+@test "Header + Normal footer" {
+    temp_file=$(mktemp)
+    echo "feat: add new feature
+
+body of the commit
+
+issue: #123" > "$temp_file"
+    run bash commit-msg.sh "$temp_file"
+    rm "$temp_file"
+    [ "$status" -eq 0 ]
+}
+
+@test "Header + Multiple normal footer" {
+    temp_file=$(mktemp)
+    echo "feat: add new feature
+
+body of the commit
+
+issue: #123
+issue: #456" > "$temp_file"
+    run bash commit-msg.sh "$temp_file"
+    echo "status:  $status"
+    echo "output:  $output"
+    rm "$temp_file"
+    [ "$status" -eq 0 ]
+    [ "$output" = "" ]
+}
+
+@test "Header + Normal footer + Breaking change" {
+    temp_file=$(mktemp)
+    echo "feat: add new feature
+
+body of the commit
+
+issue: #123
+BREAKING CHANGE: changes break API" > "$temp_file"
+    run bash commit-msg.sh "$temp_file"
+    echo "status:  $status"
+    echo "output:  $output"
+    rm "$temp_file"
+    [ "$status" -eq 0 ]
+    [ "$output" = "" ]
+}
+
+@test "Header + Multiple normal footer + Multiple breaking changes" {
+    temp_file=$(mktemp)
+    echo "feat: add new feature
+
+body of the commit
+
+issue: #123
+BREAKING CHANGE: changes break API
+BREAKING-CHANGE: another changes that breaks API
+issue: #456" > "$temp_file"
+    run bash commit-msg.sh "$temp_file"
+    echo "status:  $status"
+    echo "output:  $output"
+    rm "$temp_file"
+    [ "$status" -eq 0 ]
+    [ "$output" = "" ]
+}
+
+@test "With multiple body paragraphs" {
+    temp_file=$(mktemp)
+    echo "feat: add new feature
+
+body of the commit
+
+Another paragraph of the body.
+
+issue: #123
+issue: #456
+BREAKING CHANGE: changes break API
+BREAKING-CHANGE: another changes that breaks API
+issue: #789" > "$temp_file"
+    run bash commit-msg.sh "$temp_file"
+    echo "status:  $status"
+    echo "output:  $output"
+    rm "$temp_file"
+    [ "$status" -eq 0 ]
+    [ "$output" = "" ]
+}
+
+
 
 ################ FAILURE ################
 
@@ -242,47 +325,72 @@ This is the commit body."
   header="feat: $(printf '%*s' 89)"
   echo "$header" > temp.txt
   run $script temp.txt
+  echo "status:  $status"
+  echo "output:  $output"
   [ "$status" -ne 0 ]
-  [ "$output" = "$long_header_failure" ]
+  [ "$output" = "$commit_header_too_long" ]
 }
 
 # Test missing blank line after commit header
 @test "missing blank line after commit header" {
-  echo "feat: add new feature\nThis is the commit body." > temp.txt
+  echo -e $'feat: add new feature\nThis is the commit body.' > temp.txt
   run $script temp.txt
+  echo -e $'feat: add new feature\nThis is the commit body.'
   [ "$status" -ne 0 ]
   [ "$output" = "$body_missing_new_line" ]
 }
 
+# Test invalid body paragraph spacing
+@test "invalid body paragraph spacing" {
+  echo -e $'feat: add new feature\n\ndescription of the feature\nmore description of the feature' > temp.txt
+  run $script temp.txt
+  [ "$status" -ne 0 ]
+  [ "$output" = "TODO" ]
+  
+  echo -e $'feat: add new feature\n\nThis is the first paragraph\nThis is the second paragraph\nThis is the third paragraph' > temp.txt
+  run $script temp.txt
+  [ "$status" -ne 0 ]
+  [ "$output" = "TODO" ]
+
+  echo -e $'feat: add new feature\n\ndescription of the feature\nmore description of the feature\n\neven more description of the feature' > temp.txt
+  run $script temp.txt
+  [ "$status" -ne 0 ]
+  [ "$output" = "TODO" ]
+}
+
 # Test BREAKING CHANGE without colon
 @test "BREAKING CHANGE without colon" {
-  echo -e "feat: add new feature\n\nBREAKING CHANGE changes break API" > temp.txt
+  echo -e $'feat: add new feature\n\nBREAKING CHANGE changes break API' > temp.txt
   run $script temp.txt
+  echo "status:  $status"
+  echo "output:  $output"
   [ "$status" -ne 0 ]
   [ "$output" = "Aborting commit. Breaking changes must be indicated in the commit footer or header as 'BREAKING CHANGE: description' or 'BREAKING-CHANGE: description'." ]
 }
 
 # Test BREAKING-CHANGE without colon
 @test "BREAKING-CHANGE without colon" {
-  echo -e "fix: resolve issue\n\nBREAKING-CHANGE changes break API" > temp.txt
+  echo -e $'fix: resolve issue\n\nBREAKING-CHANGE changes break API' > temp.txt
   run $script temp.txt
+  echo "status:  $status"
+  echo "output:  $output"
   [ "$status" -ne 0 ]
   [ "$output" = "Aborting commit. Breaking changes must be indicated in the commit footer or header as 'BREAKING CHANGE: description' or 'BREAKING-CHANGE: description'." ]
 }
 
 # Test invalid 'BREAKING CHANGE' and 'BREAKING-CHANGE' with different cases
 @test "invalid 'BREAKING CHANGE' and 'BREAKING-CHANGE' with different cases" {
-  echo -e "feat: add new feature\n\nbreaking change: changes break API" > temp.txt
+  echo -e $'feat: add new feature\n\nbreaking change: changes break API' > temp.txt
   run $script temp.txt
-  echo "Status: $status"
-  echo "Output: $output"
+  echo "status:  $status"
+  echo "output:  $output"
   [ "$status" -ne 0 ]
   [ "$output" = "Aborting commit. Breaking changes must be indicated in the commit footer or header as 'BREAKING CHANGE: description' or 'BREAKING-CHANGE: description'." ]
   
-  echo -e "fix: resolve issue\n\nbreaking-change: changes break API" > temp.txt
+  echo -e $'fix: resolve issue\n\nbreaking-change: changes break API' > temp.txt
   run $script temp.txt
-  echo "Status: $status"
-  echo "Output: $output"
+  echo "status:  $status"
+  echo "output:  $output"
   [ "$status" -ne 0 ]
   [ "$output" = "Aborting commit. Breaking changes must be indicated in the commit footer or header as 'BREAKING CHANGE: description' or 'BREAKING-CHANGE: description'." ]
 }
@@ -301,4 +409,96 @@ This is the commit body."
   run $script temp.txt
   [ "$status" -ne 0 ]
   [ "$output" = "$commit_header_failure" ]
+}
+
+@test "Footer without ':' or '#'" {
+    temp_file=$(mktemp)
+    echo "feat: add new feature
+
+body of the commit
+
+issue 123" > "$temp_file"
+    run bash commit-msg.sh "$temp_file"
+    echo "status:  $status"
+    echo "output:  $output"
+    rm "$temp_file"
+    [ "$status" -ne 0 ]
+}
+
+@test "BREAKING CHANGE or BREAKING-CHANGE without ':'" {
+    temp_file=$(mktemp)
+    echo "feat: add new feature
+
+body of the commit
+
+issue: #123
+BREAKING CHANGE changes break API" > "$temp_file"
+    run bash commit-msg.sh "$temp_file"
+    echo "status:  $status"
+    echo "output:  $output"
+    rm "$temp_file"
+    [ "$status" -ne 0 ]
+}
+
+@test "Footer with '-' instead of ':'" {
+    temp_file=$(mktemp)
+    echo "feat: add new feature
+
+body of the commit
+
+issue- #123" > "$temp_file"
+    run bash commit-msg.sh "$temp_file"
+    echo "status:  $status"
+    echo "output:  $output"
+    rm "$temp_file"
+    [ "$status" -ne 0 ]
+}
+
+@test "Two consecutive empty lines in body" {
+    temp_file=$(mktemp)
+    echo "feat: add new feature
+
+body of the commit
+
+
+Another paragraph of the body.
+
+issue: #123
+BREAKING CHANGE: changes break API" > "$temp_file"
+    run bash commit-msg.sh "$temp_file"
+    echo "status:  $status"
+    echo "output:  $output"
+    rm "$temp_file"
+    [ "$status" -ne 0 ]
+}
+
+@test "Lowercase BREAKING CHANGE or BREAKING-CHANGE" {
+    temp_file=$(mktemp)
+    echo "feat: add new feature
+
+body of the commit
+
+issue: #123
+breaking change: changes break API" > "$temp_file"
+    run bash commit-msg.sh "$temp_file"
+    echo "status:  $status"
+    echo "output:  $output"
+    rm "$temp_file"
+    [ "$status" -ne 0 ]
+}
+
+@test "Footer empty lines" {
+    temp_file=$(mktemp)
+    echo "feat: add new feature
+
+body of the commit
+
+issue: #123
+
+issue: #456" > "$temp_file"
+    run bash commit-msg.sh "$temp_file"
+    echo "status:  $status"
+    echo "output:  $output"
+    rm "$temp_file"
+    [ "$status" -ne 0 ]
 }
