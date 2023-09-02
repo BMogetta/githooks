@@ -1,8 +1,10 @@
 #!/bin/bash
+#The entire commit message is loaded into commit_message
 commit_message=$(cat "$1")
 
-# Extract parts of the commit message
+# The first line (header) of the commit message is extracted into commit_header
 commit_header=$(echo "$commit_message" | sed -n '1p')
+# Everything from the second line onwards is extracted into commit_body
 commit_body=$(echo "$commit_message" | sed -n '2,$p' | sed '/./,$!d')
 
 # Valid commit types
@@ -33,13 +35,13 @@ invalid_footer="Aborting commit. Footer lines should be in the format 'token: va
 
 header_pattern="^($types)(\([^()]+\))?(!)?: .{1,}$"
 
-# Check commit header
+# Check if the header matches the defined pattern.
 if ! echo "$commit_header" | grep -iqE "$header_pattern"; then
     echo "$commit_header_failure"
     exit 1
 fi
 
-# Check commit header length
+# Check if the header's length is less than or equal to 88 characters.
 if ! echo "$commit_header" | grep -iqE "^.{1,88}$"; then
     echo "$commit_header_too_long"
     exit 1
@@ -47,18 +49,18 @@ fi
 
 ## BODY ##
 
-# Check if the second line of the commit is empty, but only if there's a body
+# Check if the commit message has a body, it checks if the second line is empty (standard git convention to separate the commit title from the body).
 if [[ -n "$commit_body" && $(echo "$commit_message" | sed -n '2p' | wc -c) -ne 1 ]]; then
     echo "$body_missing_new_line" >&2
     exit 1
 fi
 
-breaking_change_pattern="^BREAKING CHANGE: .*$|^BREAKING-CHANGE: .*$"
+breaking_change_pattern="(?<!BREAKING CHANGE[^:]\n|BREAKING-CHANGE[^:]\n)^(BREAKING CHANGE: |BREAKING-CHANGE: ).*$"
 
 # Function to check if a line could be a footer
 is_footer_element() {
     local line=$1
-    if echo "$line" | grep -qE "$breaking_change_pattern|(^|\n)(.*)!.*:.*"; then
+    if echo "$line" | grep -qP "$breaking_change_pattern|(^|\n)(.*)!.*:.*"; then
         return 0
     elif echo "$line" | grep -qE "^[^-]+[-| ]# .+$|^[^-]+: .+$"; then
         return 0
@@ -66,6 +68,7 @@ is_footer_element() {
         return 1
     fi
 }
+
 
 # Check for more than one line breaks in the commit body that are not separating footer elements
 # or for no empty line between non-footer lines
@@ -82,7 +85,7 @@ if [[ -n "$commit_body" ]]; then
         if [[ $is_footer_element_line -eq 0 ]]; then
             :
         # Check for two non-empty lines with no empty line in between
-        elif [[ -n $line && -n $prev_line && $is_footer_element_second_last_line -ne 0 ]]; then
+        elif [[ -n $line && -z $prev_line && -n $second_last_line && $is_footer_element_second_last_line -ne 0 ]]; then
             echo "$invalid_spacing" >&2
             exit 1
         fi
@@ -91,5 +94,6 @@ if [[ -n "$commit_body" ]]; then
         prev_line=$line
     done
 fi
+
 
 exit 0  # Indicate successful validation
